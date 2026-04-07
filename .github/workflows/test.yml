@@ -35,9 +35,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: cmd
         run: |
-          cl /O2 /c /Ivendor\croaring vendor\croaring\roaring.c vendor\croaring\helpers.c
-          link /DLL /DEF:vendor\croaring\exports.def /OUT:vendor\croaring\libcroaring.dll roaring.obj helpers.obj
-          dir vendor\croaring\libcroaring.*
+          cd vendor\croaring
+          cl /O2 /c /I. roaring.c helpers.c
+          link /DLL /DEF:exports.def /OUT:libcroaring.dll roaring.obj helpers.obj
+          dir libcroaring.*
       - name: Verify DLL exports (Windows)
         if: runner.os == 'Windows'
         shell: cmd

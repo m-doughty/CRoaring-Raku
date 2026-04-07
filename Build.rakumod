@@ -12,7 +12,7 @@ class Build {
 			$compile-cmd = "cc -O3 -dynamiclib -fPIC -I$vendor -o $vendor/libcroaring.dylib $sources";
 		} elsif $os ~~ /win/ {
 			$lib-ext = 'dll';
-			$compile-cmd = "cl /O2 /c /I$vendor $sources && link /DLL /DEF:$vendor/exports.def /OUT:$vendor/libcroaring.dll $vendor/roaring.obj $vendor/helpers.obj";
+			$compile-cmd = "cd /d $vendor && cl /O2 /c /I. roaring.c helpers.c && link /DLL /DEF:exports.def /OUT:libcroaring.dll roaring.obj helpers.obj";
 		} else {
 			$lib-ext = 'so';
 			$compile-cmd = "cc -O3 -shared -fPIC -I$vendor -o $vendor/libcroaring.so $sources";
