@@ -33,7 +33,7 @@ jobs:
         run: cd vendor/croaring && make
       - name: Build C library (Windows)
         if: runner.os == 'Windows'
-        run: cl /O2 /LD /Ivendor\croaring /Fe:vendor\croaring\libcroaring.dll vendor\croaring\roaring.c vendor\croaring\helpers.c
+        run: cl /O2 /LD /Ivendor\croaring /Fe:vendor\croaring\libcroaring.dll /DEF:vendor\croaring\exports.def vendor\croaring\roaring.c vendor\croaring\helpers.c
       - name: Stage C library (Unix)
         if: runner.os != 'Windows'
         run: |
