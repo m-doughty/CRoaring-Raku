@@ -2,6 +2,10 @@ Revision history for CRoaring
 
 {{$NEXT}}
 
+0.1.2  2026-04-07T19:39:47+01:00
+    - Fixed Windows DLL symbol exports using .def file + separate compile/link
+    - Build.rakumod uses two-step cl/link on Windows for correct /DEF: handling
+
 0.1.1  2026-04-07T19:29:18+01:00
     - Added Windows CI support using MSVC via compnerd/gha-setup-vsdevenv
 
