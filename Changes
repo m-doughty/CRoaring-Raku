@@ -1,0 +1,14 @@
+Revision history for CRoaring
+
+{{$NEXT}}
+
+0.1.0  2026-04-07T18:40:37+01:00
+    - Initial release
+    - NativeCall bindings for CRoaring compressed bitmaps
+    - Vendored C amalgamation with Build.rakumod
+    - Set operations: and, or, xor, andnot
+    - Bulk operations: add-many, from-array, from-range
+    - Pagination: select, slice, slice-reverse
+    - Serialization: portable format serialize/deserialize
+    - C helpers: radix sort, merge, dedupe, bitmap-based remove
+    - Deterministic dispose + GC-based DESTROY

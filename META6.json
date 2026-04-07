@@ -1,0 +1,35 @@
+{
+  "auth": "zef:apogee",
+  "authors": [
+    "Matt Doughty"
+  ],
+  "build": "Build.rakumod",
+  "build-depends": [
+  ],
+  "depends": [
+    "NativeCall"
+  ],
+  "description": "Raku bindings for CRoaring compressed bitmap library",
+  "license": "Artistic-2.0",
+  "name": "CRoaring",
+  "perl": "6.d",
+  "provides": {
+    "CRoaring": "lib/CRoaring.rakumod",
+    "CRoaring::FFI": "lib/CRoaring/FFI.rakumod"
+  },
+  "resources": [
+    "lib/libcroaring.dylib",
+    "lib/libcroaring.dll",
+    "lib/libcroaring.so"
+  ],
+  "source-url": "https://github.com/m-doughty/CRoaring-Raku.git",
+  "tags": [
+    "bitmap",
+    "roaring",
+    "set",
+    "performance"
+  ],
+  "test-depends": [
+  ],
+  "version": "0.1.0"
+}

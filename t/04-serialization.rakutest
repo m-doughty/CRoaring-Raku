@@ -1,0 +1,53 @@
+use Test;
+use lib 'lib';
+use CRoaring;
+
+plan 6;
+
+subtest 'Serialize empty bitmap, deserialize, verify empty' => {
+	plan 2;
+	my CRoaring $bm .= new;
+	my Buf:D $data = $bm.serialize;
+	ok $data.bytes > 0, 'Serialized data has bytes';
+	my CRoaring $restored = CRoaring.deserialize($data);
+	is $restored.cardinality, 0, 'Deserialized bitmap is empty';
+};
+
+subtest 'Serialize with values, deserialize, verify equals' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-array([10, 20, 30, 40, 50]);
+	my Buf:D $data = $bm.serialize;
+	my CRoaring $restored = CRoaring.deserialize($data);
+	ok $bm.equals($restored), 'Round-trip produces equal bitmap';
+};
+
+subtest 'Round-trip preserves all values' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-array([1, 100, 1000, 10000, 100000]);
+	my CRoaring $restored = CRoaring.deserialize($bm.serialize);
+	is-deeply $restored.to-array.List, (1, 100, 1000, 10000, 100000),
+		'All values preserved';
+};
+
+subtest 'Serialize returns Buf' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	isa-ok $bm.serialize, Buf, 'serialize returns Buf';
+};
+
+subtest 'Deserialize creates valid bitmap' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-array([42]);
+	my CRoaring $restored = CRoaring.deserialize($bm.serialize);
+	ok $restored.contains(42), 'Deserialized bitmap contains 42';
+	nok $restored.contains(99), 'Deserialized bitmap does not contain 99';
+};
+
+subtest 'Round-trip with large bitmap (10K values)' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-range(1, 10000);
+	my Buf:D $data = $bm.serialize;
+	my CRoaring $restored = CRoaring.deserialize($data);
+	is $restored.cardinality, 10000, '10K values preserved';
+	ok $bm.equals($restored), 'Bitmaps are equal';
+};

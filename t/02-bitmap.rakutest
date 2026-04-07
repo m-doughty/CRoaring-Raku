@@ -1,0 +1,189 @@
+use Test;
+use lib 'lib';
+use CRoaring;
+
+plan 21;
+
+subtest 'new creates empty bitmap' => {
+	plan 2;
+	my CRoaring $bm .= new;
+	ok $bm.defined, 'Bitmap created';
+	is $bm.cardinality, 0, 'Empty bitmap has 0 cardinality';
+};
+
+subtest 'from-array creates bitmap with values' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-array([10, 20, 30]);
+	is $bm.cardinality, 3, 'Has 3 elements';
+	ok $bm.contains(10), 'Contains 10';
+	ok $bm.contains(30), 'Contains 30';
+};
+
+subtest 'from-range creates contiguous range' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-range(1, 100);
+	is $bm.cardinality, 100, 'Range 1..100 has 100 elements';
+	ok $bm.contains(1), 'Contains min';
+	ok $bm.contains(100), 'Contains max';
+};
+
+subtest 'add / remove / contains' => {
+	plan 4;
+	my CRoaring $bm .= new;
+	$bm.add(42);
+	ok $bm.contains(42), 'Contains added value';
+	nok $bm.contains(99), 'Does not contain absent value';
+	$bm.remove(42);
+	nok $bm.contains(42), 'Removed value no longer contained';
+	is $bm.cardinality, 0, 'Back to empty';
+};
+
+subtest 'add-many bulk insert' => {
+	plan 1;
+	my CRoaring $bm .= new;
+	$bm.add-many((1..1000).list);
+	is $bm.cardinality, 1000, 'Bulk insert 1000 values';
+};
+
+subtest 'cardinality / elems / is-empty' => {
+	plan 4;
+	my CRoaring $bm .= new;
+	ok $bm.is-empty, 'New bitmap is empty';
+	is $bm.elems, 0, 'elems returns 0';
+	$bm.add(1);
+	nok $bm.is-empty, 'No longer empty after add';
+	is $bm.elems, 1, 'elems returns 1';
+};
+
+subtest 'to-array returns sorted list' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-array([30, 10, 20]);
+	my @arr = $bm.to-array;
+	is @arr.elems, 3, '3 elements';
+	is-deeply @arr.List, (10, 20, 30), 'Sorted order';
+};
+
+subtest 'to-array on empty bitmap' => {
+	plan 1;
+	my CRoaring $bm .= new;
+	is-deeply $bm.to-array, (), 'Empty list from empty bitmap';
+};
+
+subtest 'list alias for to-array' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	is-deeply $bm.list, $bm.to-array, '.list matches .to-array';
+};
+
+subtest 'Adding duplicates does not change cardinality' => {
+	plan 1;
+	my CRoaring $bm .= new;
+	$bm.add(42);
+	$bm.add(42);
+	$bm.add(42);
+	is $bm.cardinality, 1, 'Still 1 after adding same value 3 times';
+};
+
+subtest 'Removing absent value does not crash' => {
+	plan 1;
+	my CRoaring $bm .= new;
+	lives-ok { $bm.remove(999) }, 'Remove absent value is fine';
+};
+
+subtest 'ACCEPTS / smartmatch' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	ok 2 ~~ $bm, '2 ~~ $bitmap is True';
+	nok 99 ~~ $bm, '99 ~~ $bitmap is False';
+};
+
+subtest 'optimize does not crash' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-range(1, 10000);
+	lives-ok { $bm.optimize }, 'optimize completes';
+};
+
+subtest 'clone creates independent copy' => {
+	plan 3;
+	my CRoaring $original = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $copy = $original.clone;
+	ok $original.equals($copy), 'Clone equals original';
+	$copy.add(4);
+	is $original.cardinality, 3, 'Original unchanged after modifying clone';
+	is $copy.cardinality, 4, 'Clone has the modification';
+};
+
+# --- select ---
+
+subtest 'select returns element at rank' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-array([10, 20, 30, 40, 50]);
+	is $bm.select(0), 10, 'Rank 0 is smallest';
+	is $bm.select(2), 30, 'Rank 2 is third';
+	is $bm.select(4), 50, 'Rank 4 is largest';
+};
+
+subtest 'select out of bounds returns undefined' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	nok $bm.select(10).defined, 'Rank beyond cardinality returns undefined';
+};
+
+# --- slice ---
+
+subtest 'slice returns range of elements' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-array([10, 20, 30, 40, 50]);
+	is-deeply $bm.slice(0, 3).List, (10, 20, 30), 'First 3 elements';
+	is-deeply $bm.slice(2, 2).List, (30, 40), 'Middle slice';
+	is-deeply $bm.slice(3, 10).List, (40, 50), 'Slice past end clamps';
+};
+
+subtest 'slice edge cases' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	is-deeply $bm.slice(0, 0).List, (), 'Count 0 returns empty';
+	is-deeply $bm.slice(10, 5).List, (), 'Offset past end returns empty';
+	my CRoaring $empty .= new;
+	is-deeply $empty.slice(0, 5).List, (), 'Slice on empty returns empty';
+};
+
+# --- slice-reverse ---
+
+subtest 'slice-reverse returns newest first' => {
+	plan 3;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+	is-deeply $bm.slice-reverse(0, 3).List, (10, 9, 8), 'Page 1: newest 3';
+	is-deeply $bm.slice-reverse(3, 3).List, (7, 6, 5), 'Page 2: next 3';
+	is-deeply $bm.slice-reverse(6, 3).List, (4, 3, 2), 'Page 3: next 3';
+};
+
+subtest 'slice-reverse edge cases' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-array([1, 2, 3]);
+	is-deeply $bm.slice-reverse(0, 10).List, (3, 2, 1), 'Count past total returns all reversed';
+	is-deeply $bm.slice-reverse(10, 3).List, (), 'Offset past end returns empty';
+};
+
+subtest 'slice-reverse pagination: 13 results, page size 10' => {
+	plan 4;
+	# Simulate 13 query results (e.g., doc IDs from a search)
+	my CRoaring $bm = CRoaring.from-array([
+		101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113
+	]);
+	is $bm.cardinality, 13, '13 total results';
+
+	# Page 1: newest 10 (offset 0, count 10)
+	my @page1 = $bm.slice-reverse(0, 10);
+	is-deeply @page1.List, (113, 112, 111, 110, 109, 108, 107, 106, 105, 104),
+		'Page 1: newest 10';
+
+	# Page 2: remaining 3 (offset 10, count 10 but only 3 left)
+	my @page2 = $bm.slice-reverse(10, 10);
+	is-deeply @page2.List, (103, 102, 101),
+		'Page 2: oldest 3 (partial page)';
+
+	# Page 3: nothing left
+	my @page3 = $bm.slice-reverse(13, 10);
+	is-deeply @page3.List, (), 'Page 3: empty (past end)';
+};

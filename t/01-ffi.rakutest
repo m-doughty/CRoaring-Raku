@@ -1,0 +1,89 @@
+use Test;
+use lib 'lib';
+use CRoaring::FFI;
+use NativeCall;
+
+plan 8;
+
+subtest 'Create bitmap — non-null handle' => {
+	plan 1;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	ok $bm.defined, 'Bitmap handle is defined';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'Add and contains' => {
+	plan 2;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	roaring_bitmap_add($bm, 42);
+	ok roaring_bitmap_contains($bm, 42), 'Contains added value';
+	nok roaring_bitmap_contains($bm, 99), 'Does not contain absent value';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'Remove' => {
+	plan 1;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	roaring_bitmap_add($bm, 42);
+	roaring_bitmap_remove($bm, 42);
+	nok roaring_bitmap_contains($bm, 42), 'Removed value no longer contained';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'Cardinality' => {
+	plan 2;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	is roaring_bitmap_get_cardinality($bm), 0, 'Empty bitmap has 0 cardinality';
+	roaring_bitmap_add($bm, 1);
+	roaring_bitmap_add($bm, 2);
+	roaring_bitmap_add($bm, 3);
+	is roaring_bitmap_get_cardinality($bm), 3, 'Cardinality is 3 after 3 adds';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'Is empty' => {
+	plan 2;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	ok roaring_bitmap_is_empty($bm), 'New bitmap is empty';
+	roaring_bitmap_add($bm, 1);
+	nok roaring_bitmap_is_empty($bm), 'Bitmap with value is not empty';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'add_many with CArray' => {
+	plan 1;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	my CArray[uint32] $arr .= new;
+	$arr[0] = 10;
+	$arr[1] = 20;
+	$arr[2] = 30;
+	roaring_bitmap_add_many($bm, 3, $arr);
+	is roaring_bitmap_get_cardinality($bm), 3, 'add_many added 3 values';
+	roaring_bitmap_free($bm);
+};
+
+subtest 'Set operations at FFI level' => {
+	plan 3;
+	my RoaringBitmap $a = roaring_bitmap_create_with_capacity(0);
+	my RoaringBitmap $b = roaring_bitmap_create_with_capacity(0);
+	roaring_bitmap_add($a, 1); roaring_bitmap_add($a, 2); roaring_bitmap_add($a, 3);
+	roaring_bitmap_add($b, 2); roaring_bitmap_add($b, 3); roaring_bitmap_add($b, 4);
+
+	my RoaringBitmap $and-result = roaring_bitmap_and($a, $b);
+	is roaring_bitmap_get_cardinality($and-result), 2, 'AND gives 2 elements';
+
+	my RoaringBitmap $or-result = roaring_bitmap_or($a, $b);
+	is roaring_bitmap_get_cardinality($or-result), 4, 'OR gives 4 elements';
+
+	my RoaringBitmap $andnot-result = roaring_bitmap_andnot($a, $b);
+	is roaring_bitmap_get_cardinality($andnot-result), 1, 'ANDNOT gives 1 element';
+
+	roaring_bitmap_free($_) for $a, $b, $and-result, $or-result, $andnot-result;
+};
+
+subtest 'Free does not crash' => {
+	plan 1;
+	my RoaringBitmap $bm = roaring_bitmap_create_with_capacity(0);
+	roaring_bitmap_add($bm, 1);
+	lives-ok { roaring_bitmap_free($bm) }, 'Free completes without error';
+};

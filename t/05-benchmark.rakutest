@@ -1,0 +1,100 @@
+use Test;
+use lib 'lib';
+use CRoaring;
+
+plan 8;
+
+sub time-ms(&block --> Num:D) {
+	my Instant $start = now;
+	block();
+	my Instant $end = now;
+	($end - $start) * 1000;
+}
+
+subtest 'Bulk insert 1M values via add-many' => {
+	plan 2;
+	my CRoaring $bm .= new;
+	my @vals = (^1_000_000).list;
+	my Num:D $ms = time-ms({ $bm.add-many(@vals) });
+	is $bm.cardinality, 1_000_000, 'Cardinality is 1M';
+	ok $ms < 5000, "Completed in {$ms.round(1)}ms (< 5s)";
+	diag "  Bulk insert 1M: {$ms.round(1)}ms";
+};
+
+subtest 'Bulk insert 5M values' => {
+	plan 2;
+	my CRoaring $bm .= new;
+	my @vals = (^5_000_000).list;
+	my Num:D $ms = time-ms({ $bm.add-many(@vals) });
+	is $bm.cardinality, 5_000_000, 'Cardinality is 5M';
+	ok $ms < 15000, "Completed in {$ms.round(1)}ms (< 15s)";
+	diag "  Bulk insert 5M: {$ms.round(1)}ms";
+};
+
+subtest 'Contains lookup in 1M bitmap — 100K random lookups' => {
+	plan 1;
+	my CRoaring $bm = CRoaring.from-range(0, 999_999);
+	my @queries = (^100_000).map({ (^2_000_000).pick }).list;
+	my Num:D $ms = time-ms({
+		for @queries -> Int $q { $bm.contains($q) }
+	});
+	ok $ms < 5000, "100K lookups in {$ms.round(1)}ms (< 5s)";
+	diag "  100K contains lookups: {$ms.round(1)}ms";
+};
+
+subtest 'Union of two 1M bitmaps' => {
+	plan 2;
+	my CRoaring $a = CRoaring.from-range(0, 999_999);
+	my CRoaring $b = CRoaring.from-range(500_000, 1_499_999);
+	my CRoaring $r;
+	my Num:D $ms = time-ms({ $r = $a.or($b) });
+	is $r.cardinality, 1_500_000, 'Union cardinality correct';
+	ok $ms < 5000, "Union in {$ms.round(1)}ms (< 5s)";
+	diag "  Union 2x1M: {$ms.round(1)}ms";
+};
+
+subtest 'Intersection of two 1M bitmaps (50% overlap)' => {
+	plan 2;
+	my CRoaring $a = CRoaring.from-range(0, 999_999);
+	my CRoaring $b = CRoaring.from-range(500_000, 1_499_999);
+	my CRoaring $r;
+	my Num:D $ms = time-ms({ $r = $a.and($b) });
+	is $r.cardinality, 500_000, 'Intersection cardinality correct';
+	ok $ms < 5000, "Intersection in {$ms.round(1)}ms (< 5s)";
+	diag "  Intersection 2x1M: {$ms.round(1)}ms";
+};
+
+subtest 'Difference of two 1M bitmaps' => {
+	plan 2;
+	my CRoaring $a = CRoaring.from-range(0, 999_999);
+	my CRoaring $b = CRoaring.from-range(500_000, 1_499_999);
+	my CRoaring $r;
+	my Num:D $ms = time-ms({ $r = $a.andnot($b) });
+	is $r.cardinality, 500_000, 'Difference cardinality correct';
+	ok $ms < 5000, "Difference in {$ms.round(1)}ms (< 5s)";
+	diag "  Difference 2x1M: {$ms.round(1)}ms";
+};
+
+subtest 'Serialize/deserialize 1M bitmap' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-range(0, 999_999);
+	my Buf $data;
+	my CRoaring $restored;
+	my Num:D $ms = time-ms({
+		$data = $bm.serialize;
+		$restored = CRoaring.deserialize($data);
+	});
+	ok $bm.equals($restored), 'Round-trip preserves 1M bitmap';
+	ok $ms < 5000, "Serialize+deserialize 1M in {$ms.round(1)}ms (< 5s)";
+	diag "  Serialize+deserialize 1M: {$ms.round(1)}ms (buf size: {$data.bytes} bytes)";
+};
+
+subtest 'to-array on 1M bitmap' => {
+	plan 2;
+	my CRoaring $bm = CRoaring.from-range(0, 999_999);
+	my @arr;
+	my Num:D $ms = time-ms({ @arr = $bm.to-array });
+	is @arr.elems, 1_000_000, 'Got 1M elements';
+	ok $ms < 10000, "to-array 1M in {$ms.round(1)}ms (< 10s)";
+	diag "  to-array 1M: {$ms.round(1)}ms";
+};

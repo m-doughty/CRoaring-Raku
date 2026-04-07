@@ -1,0 +1,123 @@
+use Test;
+use lib 'lib';
+use CRoaring;
+
+plan 14;
+
+subtest 'and (intersection)' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $r = $a.and($b);
+	is-deeply $r.to-array.List, (2, 3), '{1,2,3} AND {2,3,4} = {2,3}';
+};
+
+subtest 'or (union)' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $r = $a.or($b);
+	is-deeply $r.to-array.List, (1, 2, 3, 4), '{1,2,3} OR {2,3,4} = {1,2,3,4}';
+};
+
+subtest 'xor (symmetric difference)' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $r = $a.xor($b);
+	is-deeply $r.to-array.List, (1, 4), '{1,2,3} XOR {2,3,4} = {1,4}';
+};
+
+subtest 'andnot (difference)' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $r = $a.andnot($b);
+	is-deeply $r.to-array.List, (1,), '{1,2,3} ANDNOT {2,3,4} = {1}';
+};
+
+subtest 'Set ops on empty bitmaps' => {
+	plan 4;
+	my CRoaring $a .= new;
+	my CRoaring $b .= new;
+	is $a.and($b).cardinality, 0, 'empty AND empty = empty';
+	is $a.or($b).cardinality, 0, 'empty OR empty = empty';
+	is $a.xor($b).cardinality, 0, 'empty XOR empty = empty';
+	is $a.andnot($b).cardinality, 0, 'empty ANDNOT empty = empty';
+};
+
+subtest 'Set ops where one bitmap is empty' => {
+	plan 4;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $empty .= new;
+	is $a.and($empty).cardinality, 0, 'A AND empty = empty';
+	is $a.or($empty).cardinality, 3, 'A OR empty = A';
+	is $a.xor($empty).cardinality, 3, 'A XOR empty = A';
+	is $a.andnot($empty).cardinality, 3, 'A ANDNOT empty = A';
+};
+
+subtest 'Set ops on identical bitmaps' => {
+	plan 4;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([1, 2, 3]);
+	is $a.and($b).cardinality, 3, 'A AND A = A';
+	is $a.or($b).cardinality, 3, 'A OR A = A';
+	is $a.xor($b).cardinality, 0, 'A XOR A = empty';
+	is $a.andnot($b).cardinality, 0, 'A ANDNOT A = empty';
+};
+
+subtest 'Set ops on disjoint bitmaps' => {
+	plan 4;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([4, 5, 6]);
+	is $a.and($b).cardinality, 0, 'Disjoint AND = empty';
+	is $a.or($b).cardinality, 6, 'Disjoint OR = all';
+	is $a.xor($b).cardinality, 6, 'Disjoint XOR = all';
+	is $a.andnot($b).cardinality, 3, 'Disjoint ANDNOT = self';
+};
+
+subtest 'equals — same contents' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([1, 2, 3]);
+	ok $a.equals($b), 'Same contents are equal';
+};
+
+subtest 'equals — different contents' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([1, 2, 4]);
+	nok $a.equals($b), 'Different contents are not equal';
+};
+
+subtest 'is-subset-of — subset' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([2, 3]);
+	my CRoaring $b = CRoaring.from-array([1, 2, 3, 4]);
+	ok $a.is-subset-of($b), '{2,3} is subset of {1,2,3,4}';
+};
+
+subtest 'is-subset-of — non-subset' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 5]);
+	my CRoaring $b = CRoaring.from-array([1, 2, 3, 4]);
+	nok $a.is-subset-of($b), '{1,2,5} is not subset of {1,2,3,4}';
+};
+
+subtest 'Chained operations' => {
+	plan 1;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $c = CRoaring.from-array([5, 6]);
+	my CRoaring $r = $a.and($b).or($c);
+	is-deeply $r.to-array.List, (2, 3, 5, 6), '(A AND B) OR C works';
+};
+
+subtest 'Original bitmaps unchanged after set ops' => {
+	plan 2;
+	my CRoaring $a = CRoaring.from-array([1, 2, 3]);
+	my CRoaring $b = CRoaring.from-array([2, 3, 4]);
+	my CRoaring $r = $a.and($b);
+	is $a.cardinality, 3, 'A unchanged after AND';
+	is $b.cardinality, 3, 'B unchanged after AND';
+};
