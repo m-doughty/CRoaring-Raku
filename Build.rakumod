@@ -107,7 +107,12 @@ class Build {
         unless $cached.e {
             $cache-dir.mkdir;
             say "⬇️  Fetching $artifact from $url";
-            my $rc = shell "curl -fL --progress-bar '$url' -o '$cached'";
+            # `run` with arg list avoids shell quoting entirely.
+            # Essential on Windows where cmd.exe treats single quotes
+            # as literals and a quoted Windows path (`C:\...`) looks
+            # like a malformed URL to curl.
+            my $rc = run 'curl', '-fL', '--progress-bar',
+                         '-o', $cached.Str, $url;
             unless $rc.exitcode == 0 {
                 $cached.unlink if $cached.e;
                 return False;
@@ -189,14 +194,27 @@ class Build {
     }
 
     method !sha256(IO::Path $file --> Str) {
-        # shasum on macOS/Linux; Windows uses certutil.
+        # `run` with arg list avoids shell quoting quirks (same reason
+        # as the curl invocation above).
         if $*DISTRO.is-win {
-            my $out = qqx{certutil -hashfile "$file" SHA256 2>NUL};
-            # certutil output: 3 lines; the middle one is the hex digest.
-            my @lines = $out.lines.grep(*.chars);
-            return @lines.elems >= 2 ?? @lines[1].trim !! Str;
+            my $proc = run 'certutil', '-hashfile', $file.Str, 'SHA256',
+                           :out, :err;
+            my $out = $proc.out.slurp(:close);
+            $proc.err.slurp(:close);  # drain stderr to avoid deadlock
+            # certutil output: header line, hex digest (one line per
+            # locale — sometimes space-separated bytes "AB CD EF…"
+            # on older Windows, no spaces on Win10+), trailer line.
+            # Strip internal whitespace before hex-validating so both
+            # formats parse to the same 64-hex-char digest.
+            for $out.lines -> Str $line {
+                my Str $t = $line.subst(/\s+/, '', :g).lc;
+                return $t if $t.chars == 64 && $t ~~ /^ <[0..9a..f]>+ $/;
+            }
+            return Str;
         }
-        my $out = qqx{shasum -a 256 '$file'};
+        my $proc = run 'shasum', '-a', '256', $file.Str, :out, :err;
+        my $out = $proc.out.slurp(:close);
+        $proc.err.slurp(:close);
         $out.words.head;
     }
 

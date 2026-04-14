@@ -2,6 +2,19 @@ Revision history for CRoaring
 
 {{$NEXT}}
 
+0.2.1  2026-04-14T23:02:44+01:00
+    - Windows prebuilt download: swap `shell "curl '$url' ..."` for
+      `run 'curl', ..., $url` with an arg list. cmd.exe treats single
+      quotes as literal characters, which mangled the URL + caused
+      curl to parse the Windows drive letter in the output path as
+      a malformed URL scheme. The shell-less invocation sidesteps
+      cmd.exe/bash quoting quirks entirely.
+    - SHA256 check rewritten against the same shell-free pattern:
+      `run 'certutil'` / `run 'shasum'` with stdout captured via
+      pipe. Windows digest parsing now tolerates both the unspaced
+      (Win10+) and space-separated-bytes (older Windows) certutil
+      output formats.
+
 0.2.0  2026-04-14T22:48:19+01:00
     - Prebuilt-binary-first install path. Build.rakumod now attempts
       to download a statically-linked .dylib / .so / .dll from the
