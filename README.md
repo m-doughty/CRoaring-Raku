@@ -65,7 +65,59 @@ DESCRIPTION
 
 CRoaring provides Raku bindings for the CRoaring compressed bitmap library (Roaring Bitmaps). Roaring bitmaps are compressed bitsets that support fast set operations — ideal for tagging, filtering, and indexing millions of items.
 
-The C library is vendored as an amalgamation and compiled on install via `Build.rakumod`. No system dependencies required.
+The C library is vendored as an amalgamation. No system dependencies are required beyond libc.
+
+INSTALLATION
+============
+
+    zef install CRoaring
+
+On install, `Build.rakumod` tries two paths in order:
+
+  * **Prebuilt binary download** from this repo's GitHub Releases for the detected (OS, arch) pair. Verified against a SHA256 bundled in the distribution (`resources/checksums.txt`). Statically-linked, stripped, no transitive dependencies. ~2–5 seconds on a decent connection. This is the default path when a matching release exists.
+
+  * **Source compile fallback** via `cc` (or `cl` on Windows/MSVC). Used when no prebuilt is available for the platform, when the download fails, when the checksum doesn't match, or when the user has opted out of prebuilts via env var. Takes ~20–30 seconds and needs a C toolchain but no other system libraries.
+
+Supported prebuilt platforms
+----------------------------
+
+  * macOS arm64 (Apple Silicon)
+
+  * macOS x86_64 (Intel)
+
+  * Linux x86_64 glibc
+
+  * Linux aarch64 glibc
+
+  * Windows x86_64
+
+  * Windows arm64 (Copilot+ PCs, Snapdragon X)
+
+On platforms outside this list (Alpine musl, BSDs, i686, etc.) the fallback compile path runs automatically.
+
+Environment variables
+---------------------
+
+  * `CROARING_BUILD_FROM_SOURCE=1` — skip the prebuilt path and always compile. Useful for reproducible builds or when auditing what's going into the dylib.
+
+  * `CROARING_BINARY_ONLY=1` — refuse to fall back to compile if the prebuilt is unavailable. Useful in CI where a 10× slower install via surprise compile is worse than a loud failure.
+
+  * `CROARING_BINARY_URL=<url>` — override the GitHub Releases base URL. For private mirrors, air-gapped setups, or testing a pre-release build.
+
+  * `CROARING_CACHE_DIR=<path>` — override the download cache location. Defaults to `$XDG_CACHE_HOME/CRoaring-binaries/` or `~/.cache/CRoaring-binaries/`.
+
+  * `CROARING_LIB=<path>` — bypass `%?RESOURCES` entirely and load the library from an explicit path. Undocumented escape hatch for custom notcurses builds and similar; you take full responsibility for ABI compatibility.
+
+Binary release versioning
+-------------------------
+
+Prebuilt binaries are tagged independently of the Raku distribution:
+
+    binaries-croaring-<upstream-version>-r<recipe-revision>
+
+e.g. `binaries-croaring-0.6.0-r1`. The `upstream-version` tracks the vendored CRoaring amalgamation; `recipe-revision` bumps only when build flags change (compiler flags, strip options, platform additions) while the upstream library stays the same.
+
+`Build.rakumod` hardcodes which binary tag it expects, so a Raku- side bugfix release of `CRoaring` can ship without rebuilding binaries. Users upgrading within the same binary tag get their download from the cache, not the network.
 
 Performance
 -----------

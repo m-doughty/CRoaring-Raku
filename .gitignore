@@ -23,3 +23,6 @@ core
 CRoaring-*
 vendor/croaring/libcroaring.*
 resources/lib/libcroaring.*
+
+# Windows redirection artifact if the Windows probe ever runs on Unix
+nul

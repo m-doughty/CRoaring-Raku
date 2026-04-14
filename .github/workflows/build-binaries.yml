@@ -1,0 +1,246 @@
+# Build statically-linked CRoaring binaries for every supported
+# (OS, arch) pair and publish them as GitHub Release assets, so
+# `zef install CRoaring` can grab prebuilt .dylib / .so / .dll files
+# instead of compiling from source.
+#
+# Triggers:
+#   - workflow_dispatch: manual run while the recipe is still being
+#     shaken down. Start here. Add the `push: paths:` trigger later
+#     once builds are reliably green on all 6 platforms.
+#   - push: tags matching `binaries-*`: the production path. Push a
+#     tag like `binaries-croaring-0.6.0-r1` (matching the $BINARY-TAG
+#     constant in Build.rakumod) and CI produces the release.
+#
+# Binary artefacts are versioned INDEPENDENTLY of the Raku dist
+# version — see Build.rakumod's header comment for the rationale.
+
+name: build-binaries
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: >
+          Binary tag to build + release, e.g. binaries-croaring-0.6.0-r1.
+          Must match the $BINARY-TAG constant in Build.rakumod.
+        required: true
+        type: string
+
+  push:
+    tags:
+      - 'binaries-*'
+
+  # Uncomment once builds are stable across all 6 platforms. Until
+  # then, we don't want accidental rebuilds on every vendor/ edit.
+  # push:
+  #   paths:
+  #     - 'vendor/**'
+  #     - 'Build.rakumod'
+  #     - '.github/workflows/build-binaries.yml'
+
+permissions:
+  contents: write  # needed to publish release assets
+
+jobs:
+  build:
+    name: build-${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS — explicit version pins rather than `macos-latest`
+          # so we don't silently jump runner architectures on upgrade.
+          - os: macos-14           # arm64 runner
+            platform: macos-arm64
+            lib-ext: dylib
+          - os: macos-13           # x86_64 runner (last Intel-supported)
+            platform: macos-x86_64
+            lib-ext: dylib
+
+          # Linux glibc — Ubuntu 22.04 is the oldest currently-supported
+          # GHA image, giving us the broadest glibc compatibility
+          # without needing a manylinux-style container.
+          - os: ubuntu-22.04
+            platform: linux-x86_64-glibc
+            lib-ext: so
+          - os: ubuntu-22.04-arm
+            platform: linux-aarch64-glibc
+            lib-ext: so
+
+          # Windows — `windows-2022` for x86_64 MSVC, `windows-11-arm`
+          # for native ARM64. If `windows-11-arm` isn't available to
+          # this repo yet, fall back to cross-compile from
+          # windows-2022 via `cl /arm64` — drop the arm matrix entry
+          # and add `arch: arm64` to the x86_64 one to conditionally
+          # cross-compile.
+          - os: windows-2022
+            platform: windows-x86_64
+            lib-ext: dll
+          - os: windows-11-arm
+            platform: windows-arm64
+            lib-ext: dll
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Toolchain setup ------------------------------------------
+
+      # Each Windows runner hosts the matching-arch MSVC toolchain, so
+      # we pick `amd64` on windows-2022 (x86_64) and `arm64` on
+      # windows-11-arm (native ARM64). If windows-11-arm isn't
+      # accessible to the repo, switch that matrix entry to
+      # `windows-2022` and change arch here to `amd64_arm64` to
+      # cross-compile from x86_64.
+      - name: Set up MSVC (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.platform == 'windows-arm64' && 'arm64' || 'amd64' }}
+
+      # --- Build ---------------------------------------------------
+
+      # Unix build — same hardened recipe as Build.rakumod's compile
+      # fallback, kept deliberately identical so the two paths produce
+      # behaviour-identical binaries. Strip runs immediately after
+      # link so the artefact we upload matches what a user gets from
+      # the source-compile path byte-for-byte (modulo compiler
+      # version).
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd vendor/croaring
+
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            cc -O3 -dynamiclib -fPIC \
+              -install_name @rpath/libcroaring.dylib \
+              -I. -o libcroaring.dylib roaring.c helpers.c
+            strip -x libcroaring.dylib
+            otool -L libcroaring.dylib
+          else
+            cc -O3 -shared -fPIC \
+              -I. -o libcroaring.so roaring.c helpers.c
+            strip --strip-unneeded libcroaring.so
+            ldd libcroaring.so || true
+          fi
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          cd vendor\croaring
+          cl /O2 /c /I. roaring.c helpers.c
+          link /DLL /DEF:exports.def /OUT:libcroaring.dll roaring.obj helpers.obj
+          dumpbin /EXPORTS libcroaring.dll
+
+      # --- Rename + stage artefact ---------------------------------
+
+      - name: Rename artefact to platform-specific filename
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p artefacts
+          src="vendor/croaring/libcroaring.${{ matrix.lib-ext }}"
+          dst="artefacts/libcroaring-${{ matrix.platform }}.${{ matrix.lib-ext }}"
+          cp "$src" "$dst"
+
+          # Emit the SHA256 alongside so the release job can collect
+          # them without re-hashing.
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            shasum -a 256 "$dst" > "$dst.sha256"
+          elif [[ "$RUNNER_OS" == "Windows" ]]; then
+            sha256sum "$dst" > "$dst.sha256"
+          else
+            sha256sum "$dst" > "$dst.sha256"
+          fi
+          cat "$dst.sha256"
+
+      - name: Upload artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libcroaring-${{ matrix.platform }}
+          path: artefacts/
+          retention-days: 14
+
+  # Aggregates all per-platform artefacts into a single GitHub release
+  # with a combined checksums.txt asset.
+  release:
+    name: release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/binaries-') || github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artefacts
+        uses: actions/download-artifact@v4
+        with:
+          path: downloaded/
+
+      - name: Flatten + generate combined checksums.txt
+        id: prep
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p release
+          find downloaded -type f \( -name 'libcroaring-*.dylib' \
+                                 -o -name 'libcroaring-*.so'    \
+                                 -o -name 'libcroaring-*.dll'   \) \
+            -exec cp {} release/ \;
+
+          cd release
+          # One-line format: `<sha256>  <filename>`. Sort for reproducibility.
+          sha256sum * | sort > ../checksums.txt
+          cd ..
+          echo "--- checksums.txt contents ---"
+          cat checksums.txt
+
+          # Pick the tag: from the push event on tag, or from manual input.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create / update GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.prep.outputs.tag }}
+          name: ${{ steps.prep.outputs.tag }}
+          files: |
+            release/*
+            checksums.txt
+          body: |
+            Prebuilt CRoaring binaries for `${{ steps.prep.outputs.tag }}`.
+
+            These artefacts are statically-linked (no transitive deps
+            beyond libc) and are what `zef install CRoaring` downloads
+            by default. See `Build.rakumod` for the install-time logic
+            and env-var opt-outs.
+
+            ## Verifying
+
+            ```
+            sha256sum -c checksums.txt
+            ```
+
+            ## Manual install (unusual)
+
+            If you need to pin a specific tag in an existing install:
+
+            ```
+            CROARING_BINARY_URL=https://github.com/${{ github.repository }}/releases/download \
+              zef install --force-build CRoaring
+            ```
+
+            ## After release
+
+            Copy `checksums.txt` contents into `resources/checksums.txt`
+            in the source tree + commit, then publish the next Raku
+            dist version. `Build.rakumod` treats the bundled checksums
+            as a hard security boundary and refuses prebuilts whose
+            SHA256 isn't recorded.
+          draft: false
+          prerelease: false

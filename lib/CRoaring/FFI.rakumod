@@ -7,7 +7,20 @@ constant $libname = $os ~~ /darwin/ ?? 'libcroaring.dylib' !!
                     $os ~~ /win/    ?? 'libcroaring.dll'   !!
                                        'libcroaring.so';
 
-sub _libpath() { %?RESOURCES{"lib/$libname"}.IO.Str }
+#| Resolve the CRoaring native library path. Precedence:
+#|
+#|     1. $CROARING_LIB — explicit override; full path to a .dylib / .so / .dll.
+#|        Power-user escape hatch for custom builds, system copies, or
+#|        air-gapped setups. Undocumented "take responsibility for ABI" path.
+#|     2. %?RESOURCES — staged at install time by Build.rakumod, either
+#|        from a prebuilt GitHub release or a local compile. This is the
+#|        normal path for every install.
+sub _libpath() {
+    with %*ENV<CROARING_LIB> -> $override {
+        return $override if $override.chars && $override.IO.e;
+    }
+    %?RESOURCES{"lib/$libname"}.IO.Str;
+}
 
 class RoaringBitmap is repr('CPointer') is export {}
 
