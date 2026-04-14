@@ -45,13 +45,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS — explicit version pins rather than `macos-latest`
-          # so we don't silently jump runner architectures on upgrade.
-          - os: macos-14           # arm64 runner
-            platform: macos-arm64
-            lib-ext: dylib
-          - os: macos-13           # x86_64 runner (last Intel-supported)
-            platform: macos-x86_64
+          # macOS — one universal (arm64 + x86_64) binary built on the
+          # arm64 runner via Clang's `-arch` flags. GitHub deprecated
+          # Intel macOS runners in 2025; universal builds from arm64
+          # are Apple's native distribution pattern and collapse two
+          # artefacts into one.
+          - os: macos-14
+            platform: macos-universal
             lib-ext: dylib
 
           # Linux glibc — Ubuntu 22.04 is the oldest currently-supported
@@ -111,10 +111,14 @@ jobs:
           cd vendor/croaring
 
           if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Universal binary: arm64 + x86_64 slices in one dylib.
+            # `lipo -info` confirms both are present post-build.
             cc -O3 -dynamiclib -fPIC \
+              -arch arm64 -arch x86_64 \
               -install_name @rpath/libcroaring.dylib \
               -I. -o libcroaring.dylib roaring.c helpers.c
             strip -x libcroaring.dylib
+            lipo -info libcroaring.dylib
             otool -L libcroaring.dylib
           else
             cc -O3 -shared -fPIC \

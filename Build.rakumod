@@ -44,10 +44,13 @@ class Build {
         'https://github.com/m-doughty/CRoaring-Raku/releases/download';
 
     # Map (OS, hardware) → platform slug used in both the release
-    # artefact filename and the cache directory layout.
+    # artefact filename and the cache directory layout. Both Darwin
+    # arches share the macos-universal slug: CI publishes one fat
+    # dylib with arm64 + x86_64 slices (Apple's native distribution
+    # pattern) and the dynamic loader picks the right slice at load.
     my %PLATFORM-SLUGS =
-        'darwin-arm64'    => 'macos-arm64',
-        'darwin-x86_64'   => 'macos-x86_64',
+        'darwin-arm64'    => 'macos-universal',
+        'darwin-x86_64'   => 'macos-universal',
         'linux-x86_64'    => 'linux-x86_64-glibc',
         'linux-aarch64'   => 'linux-aarch64-glibc',
         'win32-x86_64'    => 'windows-x86_64',
@@ -217,8 +220,12 @@ class Build {
         if $os ~~ /darwin/ {
             $ext = 'dylib';
             # `-install_name @rpath/…` keeps the lib relocatable after
-            # it's copied into resources/lib/.
+            # it's copied into resources/lib/. `-arch arm64 -arch x86_64`
+            # produces a universal dylib matching what CI publishes, so
+            # the source-compile path is behaviour-identical to the
+            # prebuilt path (byte-for-byte modulo compiler version).
             $build-cmd = qq{cc -O3 -dynamiclib -fPIC }
+                       ~ qq{-arch arm64 -arch x86_64 }
                        ~ qq{-install_name \@rpath/libcroaring.dylib }
                        ~ qq{-I$vendor -o $vendor/libcroaring.dylib $sources};
             $strip-cmd = qq{strip -x $vendor/libcroaring.dylib};

@@ -90,8 +90,7 @@ On install, C<Build.rakumod> tries two paths in order:
 
 =head2 Supported prebuilt platforms
 
-=item macOS arm64 (Apple Silicon)
-=item macOS x86_64 (Intel)
+=item macOS universal (arm64 + x86_64 slices in one dylib)
 =item Linux x86_64 glibc
 =item Linux aarch64 glibc
 =item Windows x86_64

@@ -81,9 +81,7 @@ On install, `Build.rakumod` tries two paths in order:
 Supported prebuilt platforms
 ----------------------------
 
-  * macOS arm64 (Apple Silicon)
-
-  * macOS x86_64 (Intel)
+  * macOS universal (arm64 + x86_64 slices in one dylib)
 
   * Linux x86_64 glibc
 
