@@ -16,3 +16,9 @@
 # is empty or doesn't list the expected artefact, every prebuilt
 # lookup fails SHA verify and Build.rakumod falls back to compiling
 # from source — safe default, just slower.
+
+34ce77ddd2888e83c9dc4a23a6e7428e26d9d878ccc32eb2c3736e1186bcd2ec  libcroaring-linux-aarch64-glibc.so
+d58200fb083af3e009f2bc0a52eac8fc3a7d8d7c27b0c545b4ed60ca99a6ace1  libcroaring-linux-x86_64-glibc.so
+1c0c00aa75ed481dbe265fcae0e347a331e3ec0bbd6325ec5aeec8b786bcd5be  libcroaring-macos-universal.dylib
+84861e6dbd52ded83dfd470030912374e93afa3b00c73147992fbba540f2e9ea  libcroaring-windows-arm64.dll
+86b504f503d83ac9a9e8860542b15f163e0db6b768b0080f824d3b429c1466c2  libcroaring-windows-x86_64.dll

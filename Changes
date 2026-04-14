@@ -2,6 +2,31 @@ Revision history for CRoaring
 
 {{$NEXT}}
 
+0.2.0  2026-04-14T22:48:19+01:00
+    - Prebuilt-binary-first install path. Build.rakumod now attempts
+      to download a statically-linked .dylib / .so / .dll from the
+      repo's GitHub Releases for the detected (OS, arch) pair before
+      falling back to source compilation.
+    - SHA256 verification against bundled resources/checksums.txt;
+      refuses any prebuilt whose hash isn't recorded (hard security
+      boundary — no downloaded checksums trusted).
+    - Cache downloaded artefacts in $XDG_CACHE_HOME/CRoaring-binaries/
+      (or $HOME/.cache/ fallback) so reinstalls skip the network.
+    - Hardened source-compile fallback: macOS uses @rpath install
+      name for relocatability; Linux + macOS strip symbols.
+    - New env knobs: CROARING_BUILD_FROM_SOURCE=1 to skip prebuilts;
+      CROARING_BINARY_ONLY=1 to refuse fallback; CROARING_BINARY_URL
+      to override the release base URL; CROARING_CACHE_DIR to
+      override the cache location; CROARING_LIB for runtime lib path
+      override.
+    - New workflow .github/workflows/build-binaries.yml: builds and
+      publishes prebuilt artefacts for six platforms (macOS arm64,
+      macOS x86_64, Linux x86_64/aarch64 glibc, Windows x86_64/arm64)
+      on manual dispatch or binaries-* tag push.
+    - README: documented the two install paths, env vars, supported
+      platforms, and the independent binary-release version scheme
+      (binaries-croaring-<upstream>-r<recipe-rev>).
+
 0.1.3  2026-04-07T19:46:26+01:00
     - Fixed Windows build: cd to vendor dir before cl/link so .obj files are co-located
 
