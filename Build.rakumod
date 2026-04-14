@@ -31,10 +31,14 @@ class Build {
 
     # --- Constants ------------------------------------------------------
 
-    # Bumped when the vendored CRoaring version changes OR the build
-    # recipe changes in a way that affects the produced binary. Format:
-    # binaries-croaring-<upstream-version>-r<recipe-revision>.
-    constant $BINARY-TAG = 'binaries-croaring-0.6.0-r1';
+    # The binary tag lives in a top-level BINARY_TAG file so both
+    # Build.rakumod and .github/workflows/build-binaries.yml read the
+    # same source of truth. Format:
+    # binaries-croaring-<upstream-version>-r<recipe-revision>. Bumped
+    # when the vendored CRoaring version changes OR the build recipe
+    # changes in a way that affects the produced binary. Raku-side-only
+    # bugfix releases keep pointing at the existing tag so user caches
+    # remain valid.
 
     constant $DEFAULT-BASE-URL =
         'https://github.com/m-doughty/CRoaring-Raku/releases/download';
@@ -58,6 +62,7 @@ class Build {
         my Bool $force-source = ?%*ENV<CROARING_BUILD_FROM_SOURCE>;
         my Bool $binary-only  = ?%*ENV<CROARING_BINARY_ONLY>;
 
+        my Str $binary-tag = self!binary-tag($dist-path);
         my Str $plat = self!detect-platform;
         without $plat {
             note "⚠️  Unknown platform ({$*KERNEL.name}-{$*KERNEL.hardware}); "
@@ -67,14 +72,16 @@ class Build {
         }
 
         unless $force-source {
-            if self!try-prebuilt($dist-path, $plat) {
-                say "✅ Installed prebuilt CRoaring binary ($plat).";
+            if self!try-prebuilt($dist-path, $plat, $binary-tag) {
+                say "✅ Installed prebuilt CRoaring binary ($plat) for $binary-tag.";
                 return True;
             }
             if $binary-only {
-                die "CROARING_BINARY_ONLY=1 set but prebuilt download failed for $plat.";
+                die "CROARING_BINARY_ONLY=1 set but prebuilt download failed "
+                  ~ "for $plat ($binary-tag).";
             }
-            note "⚠️  Prebuilt binary unavailable for $plat — compiling from source.";
+            note "⚠️  Prebuilt binary unavailable for $plat ($binary-tag) "
+               ~ "— compiling from source.";
         }
 
         self!compile-from-source($dist-path);
@@ -87,12 +94,12 @@ class Build {
     #| Attempt to download, verify, and install the prebuilt artefact
     #| for $plat. Returns True on success, False on any failure — Build
     #| falls back to source compile on False (unless BINARY_ONLY is set).
-    method !try-prebuilt($dist-path, Str $plat --> Bool) {
+    method !try-prebuilt($dist-path, Str $plat, Str $binary-tag --> Bool) {
         my Str $artifact = self!artifact-name($plat);
-        my IO::Path $cache-dir = self!cache-dir;
+        my IO::Path $cache-dir = self!cache-dir($binary-tag);
         my IO::Path $cached = $cache-dir.add($artifact);
         my Str $base-url = %*ENV<CROARING_BINARY_URL> // $DEFAULT-BASE-URL;
-        my Str $url = "$base-url/$BINARY-TAG/$artifact";
+        my Str $url = "$base-url/$binary-tag/$artifact";
 
         unless $cached.e {
             $cache-dir.mkdir;
@@ -142,11 +149,27 @@ class Build {
         copy $src, $dest;
     }
 
-    method !cache-dir(--> IO::Path) {
+    method !cache-dir(Str $binary-tag --> IO::Path) {
         my Str $base = %*ENV<CROARING_CACHE_DIR>
             // %*ENV<XDG_CACHE_HOME>
             // "{%*ENV<HOME> // '.'}/.cache";
-        "$base/CRoaring-binaries/$BINARY-TAG".IO;
+        "$base/CRoaring-binaries/$binary-tag".IO;
+    }
+
+    #| Read the binary tag from the top-level BINARY_TAG file. Same
+    #| file is read by .github/workflows/build-binaries.yml so there
+    #| is one source of truth for which release tag this Build expects.
+    method !binary-tag($dist-path --> Str) {
+        my IO::Path $file = "$dist-path/BINARY_TAG".IO;
+        unless $file.e {
+            die "❌ Missing BINARY_TAG file at { $file }. This file must "
+              ~ "contain the pinned binary release tag "
+              ~ "(e.g. 'binaries-croaring-0.6.0-r1') and ship with the "
+              ~ "distribution.";
+        }
+        my Str $tag = $file.slurp.trim;
+        die "❌ BINARY_TAG file is empty." unless $tag.chars;
+        $tag;
     }
 
     method !expected-sha($dist-path, Str $artifact --> Str) {

@@ -17,14 +17,11 @@
 name: build-binaries
 
 on:
+  # Manual dispatch takes no input — the binary tag comes from the
+  # BINARY_TAG file at the repo root, same source of truth that
+  # Build.rakumod reads. Bumping the tag = edit BINARY_TAG in a
+  # commit and then dispatch (or push a matching tag).
   workflow_dispatch:
-    inputs:
-      tag:
-        description: >
-          Binary tag to build + release, e.g. binaries-croaring-0.6.0-r1.
-          Must match the $BINARY-TAG constant in Build.rakumod.
-        required: true
-        type: string
 
   push:
     tags:
@@ -179,7 +176,7 @@ jobs:
         with:
           path: downloaded/
 
-      - name: Flatten + generate combined checksums.txt
+      - name: Flatten + generate combined checksums.txt + resolve tag
         id: prep
         shell: bash
         run: |
@@ -191,18 +188,32 @@ jobs:
             -exec cp {} release/ \;
 
           cd release
-          # One-line format: `<sha256>  <filename>`. Sort for reproducibility.
+          # Format: `<sha256>  <filename>`. Sort for reproducibility.
           sha256sum * | sort > ../checksums.txt
           cd ..
           echo "--- checksums.txt contents ---"
           cat checksums.txt
 
-          # Pick the tag: from the push event on tag, or from manual input.
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+          # Source of truth: the BINARY_TAG file that Build.rakumod also reads.
+          file_tag=$(cat BINARY_TAG | tr -d '[:space:]')
+          if [[ -z "$file_tag" ]]; then
+            echo "❌ BINARY_TAG file is empty or missing."
+            exit 1
           fi
+
+          # On tag-push builds, refuse to release if the pushed tag
+          # doesn't match BINARY_TAG. That drift is a bug, not a
+          # release — forces the human to commit + dispatch correctly.
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            pushed=${GITHUB_REF#refs/tags/}
+            if [[ "$pushed" != "$file_tag" ]]; then
+              echo "❌ Pushed tag '$pushed' doesn't match BINARY_TAG file '$file_tag'."
+              echo "   Either update BINARY_TAG and commit, or push the matching tag."
+              exit 1
+            fi
+          fi
+
+          echo "tag=$file_tag" >> "$GITHUB_OUTPUT"
 
       - name: Create / update GitHub release
         uses: softprops/action-gh-release@v2
