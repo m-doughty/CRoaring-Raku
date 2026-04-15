@@ -23,6 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:20.04
+    # Containers default to /bin/sh (dash), which lacks `pipefail` and
+    # other bashisms the steps below rely on. Force bash workflow-wide.
+    defaults:
+      run:
     env:
       DEBIAN_FRONTEND: noninteractive
       # Force no colour so grep against captured log output is
@@ -52,7 +56,7 @@ jobs:
       - name: Install module (capture build log)
         id: install
         run: |
-          set -o pipefail
+          set -eo pipefail
           # `zef install .` runs Build.rakumod; we tee its output so the
           # subsequent grep can assert the fallback path was taken.
           zef install --/test --verbose . 2>&1 | tee build.log
@@ -69,6 +73,7 @@ jobs:
 
       - name: Smoke-test the installed module
         run: |
+          set -eo pipefail
           # If the source-compile path produced a working libcroaring.so,
           # a trivial `use CRoaring` load + basic op should succeed.
           raku -e 'use CRoaring; my $b = CRoaring.new; $b.add(42); say $b.contains(42) ?? "ok" !! "fail"' \
