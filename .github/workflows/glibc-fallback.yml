@@ -27,6 +27,7 @@ jobs:
     # other bashisms the steps below rely on. Force bash workflow-wide.
     defaults:
       run:
+        shell: bash
     env:
       DEBIAN_FRONTEND: noninteractive
       # Force no colour so grep against captured log output is
