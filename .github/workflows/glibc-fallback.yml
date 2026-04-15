@@ -32,13 +32,22 @@ jobs:
       - name: Install system deps
         run: |
           apt-get update
+          # Focal's `rakudo` package is years out of date and there's
+          # no `zef` package at all, so we don't install Raku via apt.
+          # Raku/setup-raku below pulls a current rakudo + zef into
+          # the container. The only reason we're in a 20.04 container
+          # at all is for the old glibc (2.31) — that's what we're
+          # testing the fallback against.
           apt-get install -y --no-install-recommends \
-              build-essential curl ca-certificates git \
-              rakudo zef
+              build-essential curl ca-certificates git
           # Sanity-check the glibc version we're about to test against.
           ldd --version | head -1
 
       - uses: actions/checkout@v4
+
+      - uses: Raku/setup-raku@v1
+        with:
+          raku-version: 'latest'
 
       - name: Install module (capture build log)
         id: install
