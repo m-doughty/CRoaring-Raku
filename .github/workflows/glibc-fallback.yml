@@ -46,7 +46,10 @@ jobs:
           apt-get install -y --no-install-recommends \
               build-essential curl ca-certificates git
           # Sanity-check the glibc version we're about to test against.
-          ldd --version | head -1
+          # Don't pipe to `head` — GH Actions' bash runner enables
+          # pipefail, so SIGPIPE'ing ldd propagates as exit 141 and
+          # fails the step. ldd's output is 4 lines; just print it.
+          ldd --version
 
       - uses: actions/checkout@v4
 
