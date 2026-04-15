@@ -12,6 +12,13 @@
 #|      a C toolchain but no other system deps — CRoaring has zero
 #|      transitive deps beyond libc.
 #|
+#| Linux prebuilts are built on ubuntu-22.04 (glibc 2.35 — see the
+#| $MIN-GLIBC constant). On systems with older glibc (Ubuntu 20.04 /
+#| Debian 11 / RHEL 8 / Amazon Linux 2 / etc.) the prebuilt loads but
+#| dies at first symbol use with "GLIBC_2.xx not found". Build detects
+#| this via `ldd --version` and short-circuits to the source path
+#| before the download even happens.
+#|
 #| Env-var knobs:
 #|
 #|   CROARING_BUILD_FROM_SOURCE=1   skip the prebuilt path, always compile
@@ -43,6 +50,14 @@ class Build {
     constant $DEFAULT-BASE-URL =
         'https://github.com/m-doughty/CRoaring-Raku/releases/download';
 
+    # Minimum glibc the prebuilt Linux archives are compatible with.
+    # The CI workflow builds on ubuntu-22.04 which ships glibc 2.35;
+    # symbols referenced by the produced .so include GLIBC_2.34 /
+    # GLIBC_2.33 versioning, so loading on older systems fails at
+    # first symbol use with "GLIBC_2.xx not found" — unrecoverable at
+    # runtime. Bump this constant in lockstep with the CI runner OS.
+    constant $MIN-GLIBC = v2.35;
+
     # Map (OS, hardware) → platform slug used in both the release
     # artefact filename and the cache directory layout. Both Darwin
     # arches share the macos-universal slug: CI publishes one fat
@@ -72,6 +87,31 @@ class Build {
                 ~ "falling back to source build.";
             self!compile-from-source($dist-path);
             return True;
+        }
+
+        # Guard: prebuilt Linux archives are built on ubuntu-22.04
+        # (glibc $MIN-GLIBC). On older glibc the downloaded .so loads
+        # but dies at first symbol use with "GLIBC_2.xx not found".
+        # Detect here and fall back to source before we even try the
+        # download. Only applies to glibc slugs — musl systems don't
+        # match a platform slug in the first place (ldd --version
+        # exits non-zero on musl, and even if it succeeded there's no
+        # linux-*-musl slug to match).
+        if !$force-source && $plat.ends-with('-glibc') {
+            my Version $have = self!detect-glibc-version;
+            if $have.defined && $have cmp $MIN-GLIBC == Less {
+                if $binary-only {
+                    die "CROARING_BINARY_ONLY=1 set but system glibc "
+                      ~ "$have is older than prebuilt target $MIN-GLIBC "
+                      ~ "($plat / $binary-tag).";
+                }
+                note "⚠️  System glibc $have is older than prebuilt "
+                   ~ "target $MIN-GLIBC — falling back to source build "
+                   ~ "to avoid runtime loader errors.";
+                self!compile-from-source($dist-path);
+                say "✅ Compiled CRoaring from vendored source.";
+                return True;
+            }
         }
 
         unless $force-source {
@@ -298,6 +338,29 @@ class Build {
     method !detect-platform(--> Str) {
         my Str $key = "{$*KERNEL.name.lc}-{$*KERNEL.hardware.lc}";
         %PLATFORM-SLUGS{$key};
+    }
+
+    #| Parse `ldd --version` for the system's glibc version. Returns a
+    #| Version on glibc systems, Nil on musl (ldd --version exits
+    #| non-zero) or when ldd is absent / unparseable. Only meaningful
+    #| on Linux — don't call on other OSes.
+    #|
+    #| First-line format varies by distro but always ends with the
+    #| version number:
+    #|   "ldd (GNU libc) 2.35"
+    #|   "ldd (Ubuntu GLIBC 2.35-0ubuntu3.4) 2.35"
+    #|   "ldd (Debian GLIBC 2.31-13+deb11u7) 2.31"
+    method !detect-glibc-version(--> Version) {
+        my $proc = try { run 'ldd', '--version', :out, :err };
+        return Version without $proc;
+        my $out = $proc.out.slurp(:close);
+        $proc.err.slurp(:close);
+        return Version unless $proc.exitcode == 0;
+        my $first = $out.lines.head // '';
+        if $first ~~ / (\d+ '.' \d+ [ '.' \d+ ]?) \s* $ / {
+            return Version.new(~$0);
+        }
+        Version;
     }
 
     #| Create empty placeholder files for the two platform-specific
