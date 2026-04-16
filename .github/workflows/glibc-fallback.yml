@@ -75,11 +75,11 @@ jobs:
           fi
           echo "✅ Build.rakumod correctly fell back to source compile on old glibc."
 
-      - name: Smoke-test the installed module
-        run: |
-          set -eo pipefail
-          # If the source-compile path produced a working libcroaring.so,
-          # a trivial `use CRoaring` load + basic op should succeed.
-          raku -e 'use CRoaring; my $b = CRoaring.new; $b.add(42); say $b.contains(42) ?? "ok" !! "fail"' \
-              | tee smoke.out
-          grep -qx ok smoke.out
+      - name: Install App::Prove6
+        run: zef install --/test App::Prove6
+
+      - name: Run unit tests
+        # Same invocation as test.yml — exercises the full suite
+        # against the source-compiled libcroaring.so, so the fallback
+        # path is validated end-to-end rather than just at load.
+        run: prove6 --verbose -I lib t

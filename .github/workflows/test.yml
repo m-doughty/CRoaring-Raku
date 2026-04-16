@@ -25,40 +25,36 @@ jobs:
       - uses: Raku/setup-raku@v1
         with:
           raku-version: ${{ matrix.raku-version }}
+
+      # ---------------------------------------------------------
+      # Prebuilt path — no C toolchain needed. zef install runs
+      # Build.rakumod which downloads the prebuilt .dylib/.so/.dll
+      # from GitHub Releases, SHA-verifies, and stages to the XDG
+      # data dir. Proves the end-user install path works without
+      # any system deps beyond Raku itself.
+      # ---------------------------------------------------------
+      - name: Install CRoaring via prebuilt path
+        run: zef install --/test .
+
+      - name: Install App::Prove6
+        run: zef install --/test App::Prove6
+
+      - name: Run tests — prebuilt path
+        run: prove6 --verbose -I. t
+
+      # ---------------------------------------------------------
+      # Source-build fallback — needs a C compiler. On Windows,
+      # VS Dev Environment provides cl.exe; on Unix, cc is
+      # pre-installed on all GH runners.
+      # ---------------------------------------------------------
       - name: Setup VS Dev Environment
         if: runner.os == 'Windows'
         uses: compnerd/gha-setup-vsdevenv@v6
-      - name: Build C library (Unix)
-        if: runner.os != 'Windows'
-        run: cd vendor/croaring && make
-      - name: Build C library (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: |
-          cd vendor\croaring
-          cl /O2 /c /I. roaring.c helpers.c
-          link /DLL /DEF:exports.def /OUT:libcroaring.dll roaring.obj helpers.obj
-          dir libcroaring.*
-      - name: Verify DLL exports (Windows)
-        if: runner.os == 'Windows'
-        shell: cmd
-        run: dumpbin /EXPORTS vendor\croaring\libcroaring.dll
-      - name: Stage C library (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          mkdir -p resources/lib
-          cp vendor/croaring/libcroaring.* resources/lib/
-          touch resources/lib/libcroaring.dylib resources/lib/libcroaring.so resources/lib/libcroaring.dll
-      - name: Stage C library (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          New-Item -ItemType Directory -Force -Path resources\lib
-          Copy-Item vendor\croaring\libcroaring.dll resources\lib\
-          New-Item -ItemType File -Force -Path resources\lib\libcroaring.dylib
-          New-Item -ItemType File -Force -Path resources\lib\libcroaring.so
-      - name: Install Dependencies
-        run: zef install --/test --test-depends --deps-only .
-      - name: Install App::Prove6
-        run: zef install --/test App::Prove6
-      - name: Run Tests
+
+      - name: Install CRoaring via source-build path
+        env:
+          CROARING_BUILD_FROM_SOURCE: '1'
+        run: zef install --/test --force-install .
+
+      - name: Run tests — source-build path
         run: prove6 --verbose -I. t
