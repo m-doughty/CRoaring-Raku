@@ -2,6 +2,9 @@ Revision history for CRoaring
 
 {{$NEXT}}
 
+0.2.3  2026-04-29T23:39:52+01:00
+    - Bump github actions to use node 24.
+
 0.2.2  2026-04-15T23:43:15+01:00
     - Build.rakumod: detect system glibc via `ldd --version` and
       fall back to source compile when it's older than the prebuilt
